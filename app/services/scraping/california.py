@@ -1,6 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
+from typing import Dict            
 import time
 
 BASE_URL = "https://apps.calbar.ca.gov/attorney/LicenseeSearch/AdvancedSearch"
@@ -27,7 +28,7 @@ HEADERS = {
     )
 }
 
-def parse_search_results(html):
+def parse_search_results(html) -> Dict[str, str]:
     soup = BeautifulSoup(html, "lxml")
     results = []
 
@@ -169,37 +170,35 @@ def fetch_attorney_detail(session, detail_href):
     print(f"Details Response: {resp.status_code}, {resp.url}")
     return resp.text
 
-def scrape_city(city, limit):
+def scrape_city(city, overview_pages):
     session = requests.Session()
     all_attorneys = []
-
-    for i in range(limit):
-        print(f"Fetching {city}, page {i + 1}...")
+    for page in range(overview_pages):
+        print(f"Fetching {city}, page {page + 1}...")
         html = fetch_city_page(city, session)
         results = parse_search_results(html)
         if not results:
             print("No more results.")
             break
 
-        print(results[:5])
         for res in results[:5]:
-            detail_html = fetch_attorney_detail(session, f"/attorney/Licensee/Detail/{res['bar_number']}")
-            detail_data = parse_attorney_detail(detail_html, res["bar_number"])
+            print(f"Attorney Details: {res.get("name", "")}")
+            if not res.get("bar_number"):
+                continue
+            detail_html = fetch_attorney_detail(session, f"/attorney/Licensee/Detail/{res.get("bar_number")}")
+            detail_data = parse_attorney_detail(detail_html, res.get("bar_number"))
             all_attorneys.append(detail_data)
-
             time.sleep(1.5)
-
-        break
-        time.sleep(1.5)
 
     return all_attorneys
 
 def main():
     cities = ["Los Angeles"]
-    limit = 5
+    pages = 5
 
     for city in cities:
-        data = scrape_city(city, limit)
+        data = scrape_city(city, pages)
+    
     print(data)
 
 if __name__ == "__main__":
