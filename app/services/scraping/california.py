@@ -28,7 +28,27 @@ HEADERS = {
     )
 }
 
-def parse_search_results(html) -> Dict[str, str]:
+def extract_field(soup, label: str, field_length: int = 0) -> str:
+    """
+    soup.findall(string=<>) will search all text nodes. 
+    We find text node where label=Address, Email, etc.
+    node.parent means entire element that the text is contained in
+    """
+    candidates = soup.find_all(string=lambda t: t and label + ":" in t)
+    for node in candidates:
+        text = node.parent.get_text(" ", strip=True)
+        print(text)
+        # double check for safety (startswith)
+        if text.startswith(label + ":"):
+            # trim "Address: "
+            if field_length > 0:
+                return text[len(label)+1:len(label)+1+field_length].strip()
+
+            return text[len(label)+1:].strip()
+
+    return ""
+
+def parse_overview_page(html) -> Dict[str, str]:
     soup = BeautifulSoup(html, "lxml")
     results = []
 
@@ -43,13 +63,11 @@ def parse_search_results(html) -> Dict[str, str]:
 
     return results
 
-def parse_attorney_detail(html, bar_number):
+def parse_attorney_detail_page(html, bar_number):
     soup = BeautifulSoup(html, "lxml")
     details = {"bar_number": bar_number}
 
-    # -------------------------
     # Name, Bar Number, License Status
-    # -------------------------
     name_block = soup.find("div", style="margin-top:1em;")
     if name_block:
         b_tag = name_block.find("b")
@@ -75,36 +93,19 @@ def parse_attorney_detail(html, bar_number):
                     status_text = status_text.replace("License Status:", "").strip()
                 details["license_status"] = status_text
 
-    # -------------------------
     # Address
-    # -------------------------
-    addr_tag = soup.find("p", string=lambda t: t and t.startswith("Address:"))
-    if addr_tag:
-        details["address"] = addr_tag.get_text(strip=True).replace("Address:", "").strip()
+    details["address"] = extract_field(soup, "Address")
+    details["phone"] = extract_field(soup, "Phone", 12) # phone is len = 12
 
-    # -------------------------
-    # Phone
-    # -------------------------
-    phone_tag = soup.find("p", string=lambda t: t and t.startswith("Phone:"))
-    if phone_tag:
-        details["phone"] = phone_tag.get_text(" ", strip=True).replace("Phone:", "").strip()
+    details["additional_languages_self_reported"] = extract_field(soup, "By the attorney")
+    details["additional_languages_staff_reported"] = extract_field(soup, "By Staff")
+    
+    details["law_school"] = extract_field(soup, "Law School")
 
-    # -------------------------
-    # Additional Languages Spoken
-    # -------------------------
-    lang_div = soup.find("div", string=lambda t: t and "Additional Languages Spoken:" in t)
-    if lang_div:
-        # Parent div contains <ul><li>By the attorney / By staff</li></ul>
-        ul_tag = lang_div.find_parent("div").find("ul")
-        if ul_tag:
-            for li in ul_tag.find_all("li"):
-                label = li.get_text(":", strip=True).split(":")[0].lower().replace(" ", "_")
-                value = li.find("span").get_text(strip=True)
-                details[label] = value
-
-    # -------------------------
+    """
+    FLAG
+    """
     # Law School
-    # -------------------------
     law_school_tag = soup.find("p", string=lambda t: t and "Law School:" in t)
     if law_school_tag:
         details["law_school"] = law_school_tag.get_text(strip=True).replace("Law School:", "").strip()
@@ -116,18 +117,20 @@ def parse_attorney_detail(html, bar_number):
     if date_tag:
         details["date_admitted"] = date_tag.get_text(strip=True)
 
-    # -------------------------
+    """
+    FLAG
+    """
     # Certified Legal Specialty
-    # -------------------------
     cls_div = soup.find("a", href="http://californiaspecialist.org/")
     if cls_div:
         # The sibling div contains the specialty text
         sibling_div = cls_div.find_parent("div").find_all("div")[1]
         details["certified_legal_specialty"] = sibling_div.get_text(" ", strip=True)
 
-    # -------------------------
+    """
+    FLAG
+    """
     # Practice Areas (self)
-    # -------------------------
     practice_ul = soup.find("p", string=lambda t: t and "Self-Reported Practice Areas:" in t)
     if practice_ul:
         ul_tag = practice_ul.find_next_sibling("div").find("ul")
@@ -135,7 +138,13 @@ def parse_attorney_detail(html, bar_number):
             details["practice_areas"] = [li.get_text(strip=True) for li in ul_tag.find_all("li")]
     return details
 
-def fetch_city_page(city, session):
+def fetch_overview_page(
+        session,
+        state: str = "CA", 
+        city: str = "", 
+        practice_area: str = "", 
+    ):
+
     params = {
         "LastNameOption": "b",
         "LastName": "",
@@ -146,14 +155,14 @@ def fetch_city_page(city, session):
         "FirmNameOption": "b",
         "FirmName": "",
         "CityOption": "e",
-        "City": city,
-        "State": "",
+        "City": city if city else "",
+        "State": state, # CA
         "Zip": "",
         "District": "",
         "County": "",
         "LegalSpecialty": "",
         "LanguageSpoken": "",
-        "PracticeArea": ""
+        "PracticeArea": practice_area if practice_area else "" # 51 = Personal Injury
     }
 
     resp = session.get(
@@ -163,43 +172,37 @@ def fetch_city_page(city, session):
     )
     return resp.text
 
-def fetch_attorney_detail(session, detail_href):
+def fetch_attorney_detail_page(session, detail_href):
     url = urljoin(BASE_URL, detail_href)
     resp = session.get(url, headers=HEADERS)
     resp.raise_for_status()
     print(f"Details Response: {resp.status_code}, {resp.url}")
     return resp.text
 
-def scrape_city(city, overview_pages):
-    session = requests.Session()
+def scrape_state(
+        session,
+        state: str, 
+        overview_pages: int,
+        city: str = "", 
+        practice_area: str = ""
+    ):
+
     all_attorneys = []
     for page in range(overview_pages):
         print(f"Fetching {city}, page {page + 1}...")
-        html = fetch_city_page(city, session)
-        results = parse_search_results(html)
+        html = fetch_overview_page(session, state, city, practice_area)
+        results = parse_overview_page(html)
         if not results:
             print("No more results.")
             break
 
         for res in results[:5]:
-            print(f"Attorney Details: {res.get("name", "")}")
             if not res.get("bar_number"):
                 continue
-            detail_html = fetch_attorney_detail(session, f"/attorney/Licensee/Detail/{res.get("bar_number")}")
-            detail_data = parse_attorney_detail(detail_html, res.get("bar_number"))
+            detail_html = fetch_attorney_detail_page(session, f"/attorney/Licensee/Detail/{res.get("bar_number")}")
+            detail_data = parse_attorney_detail_page(detail_html, res.get("bar_number"))
             all_attorneys.append(detail_data)
             time.sleep(1.5)
 
     return all_attorneys
 
-def main():
-    cities = ["Los Angeles"]
-    pages = 5
-
-    for city in cities:
-        data = scrape_city(city, pages)
-    
-    print(data)
-
-if __name__ == "__main__":
-    main()
