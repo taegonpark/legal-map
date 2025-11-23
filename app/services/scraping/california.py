@@ -1,4 +1,3 @@
-import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from typing import Dict, Tuple            
@@ -7,19 +6,6 @@ import time
 
 BASE_URL = "https://apps.calbar.ca.gov/attorney/LicenseeSearch/AdvancedSearch"
 DETAIL_URL = "https://apps.calbar.ca.gov/attorney/LicenseeSearch/Detail/{}"
-features = [
-    "Name",
-    "Bar Number",
-    "License Status",
-    "Address",
-    "Phone",
-    "Email",
-    "Additional Languages spoken",
-    "Law School",
-    "Date Admitted to Bar",
-    "Certified Legal Specialty",
-    "Practice Areas (self)"
-]
 
 HEADERS = {
     "User-Agent": (
@@ -33,6 +19,7 @@ def clean_str(raw: str):
     if not raw:
         return ""
     cleaned = raw.strip().lstrip(":").strip()
+    cleaned = cleaned.replace("\n", " ").replace("\r", " ")
     cleaned = " ".join(cleaned.split()) # collapse spaces
     return cleaned
 
@@ -142,7 +129,7 @@ def parse_detail_page(html, bar_number):
     date_tag = soup.find("strong", string=lambda t: t and "/" in t)
     if date_tag:
         details["date_admitted"] = date_tag.get_text(strip=True)
-        
+
     # Label-based fields
     details["license_status"]  = extract_field(soup, "License Status")
     details["address"]         = extract_field(soup, "Address")
