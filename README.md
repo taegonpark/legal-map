@@ -1,7 +1,4 @@
-A web application that assists legal professionals and clients
-
-This is the best app ever.
-
+A web application that connects clients to personal injury attorneys based on their case.
 
 ## To Run Scripts (Manual Testing)
 Navigate to /legal-map
