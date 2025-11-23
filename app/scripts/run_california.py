@@ -6,19 +6,19 @@ from app.services.persistence import save_to_csv
 def main():
     session = requests.Session()
 
-    state = "CA"
+    state_code = "CA"
     city = "Los Angeles"
     practice_area = "51"
     overview_pages = 1
 
     attorneys = scrape_state(
         session,
-        state, 
+        state_code, 
         overview_pages, 
         city, 
         practice_area
     )
-    
+
     save_to_csv(attorneys, "data/attorneys.csv")
 
 if __name__ == "__main__":
