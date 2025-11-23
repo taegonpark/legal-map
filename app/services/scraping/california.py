@@ -239,7 +239,7 @@ def scrape_state(
             print("No more results.")
             break
 
-        for res in overview_data[:10]:
+        for res in overview_data:
             if not res.get("bar_number"):
                 continue
             detail_html = fetch_detail_page(session, f"/attorney/Licensee/Detail/{res.get("bar_number")}")

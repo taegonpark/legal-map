@@ -1,11 +1,29 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from db.models import Attorney
-from db.session import get_db
+from app.db.session import SessionLocal
+from app.db.models import Attorney
 
 router = APIRouter()
 
-@router.get("/")
-def read_attorneys(skip: int = 0, limit: int = 10, db: Session = Depends(get_db)):
-    attorneys = db.query(Attorney).offset(skip).limit(limit).all()
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+@router.get("/attorneys/{jurisdiction}")
+def get_attorneys_by_jurisdiction(jurisdiction: str, db: Session = Depends(get_db)):
+    attorneys = (
+        db.query(Attorney)
+        .filter(Attorney.jurisdiction == jurisdiction.upper())
+        .all()
+    )
     return attorneys
+
+# @router.get("/attorneys")
+# def get_attorneys(db: Session = Depends(get_db)):
+#     attorneys = (
+#         db.query(Attorney).all()
+#     )
+#     return attorneys
